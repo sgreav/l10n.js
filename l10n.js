@@ -17,13 +17,14 @@
 var
   undef_type = "undefined"
 , string_type = "string"
-, nav = self.navigator
+, nav = {}
 , String_ctr = String
 , has_own_prop = Object.prototype.hasOwnProperty
 , load_queues = {}
 , localizations = {}
 , FALSE = !1
 , TRUE = !0
+, browserless = FALSE
 // the official format is application/vnd.oftn.l10n+json, though l10n.js will also
 // accept application/x-l10n+json and application/l10n+json
 , l10n_js_media_type = /^\s*application\/(?:vnd\.oftn\.|x-)?l10n\+json\s*(?:$|;)/i
@@ -50,6 +51,9 @@ var
 	return -1;
 }
 , request_JSON = function (uri) {
+    if(browserless)
+        return loadFromDisk(uri);
+    
 	var req  = new XHR(),
 		data = {};
 	
@@ -125,6 +129,11 @@ var
 	// Return what function.toLocaleString() normally returns
 	return Function.prototype[$to_locale_string].apply(String_ctr, arguments);
 }
+, loadFromDisk = String_ctr[$to_locale_string] = function (uri) {
+        const fs = require('fs');
+        var read = fs.readFileSync(uri, 'utf8');
+        return JSON.parse(read);
+}
 , process_load_queue = function (locale) {
 	var
 	  queue = load_queues[locale]
@@ -176,7 +185,26 @@ var
 }
 ;
 
-if (typeof XMLHttpRequest === undef_type && typeof ActiveXObject !== undef_type) {
+try 
+{
+    nav = self.navigator;
+}
+catch(selfNotFoundException)
+{
+   if(global.nav)
+   {
+        nav = global.nav;
+   }
+   else
+   {
+       var nodeError = "Problem setting nav in L10N. You are most likely running in a non-browser environment like Node." + 
+        "If this is the case, you can resolve this error by setting global.nav to an object which contains a \"language\"  field. ";
+       throw new Error(nodeError);
+   }
+   browserless = TRUE;
+}
+
+if (!browserless && typeof XMLHttpRequest === undef_type && typeof ActiveXObject !== undef_type) {
 	var AXO = ActiveXObject;
 	
 	XHR = function () {
@@ -193,13 +221,28 @@ if (typeof XMLHttpRequest === undef_type && typeof ActiveXObject !== undef_type)
 		throw new Error("XMLHttpRequest not supported by this browser.");
 	};
 } else {
-	XHR = XMLHttpRequest;
+    try
+    {
+        XHR = XMLHttpRequest;
+    }
+    catch(xhrEx4)
+    {   
+        if(global.XMLHttpRequest) {
+            XHR = global.XMLHttpRequest;
+        }
+        else {
+           var nodeError = "Problem setting XHR in L10N. You are most likely running in a non-browser environment like Node." + 
+            "If this is the case, you can resolve this error by setting global.XMLHttpRequest to a function which produces XMLHttpRequests. " + 
+            "\nTip: if you are using node, you might want to use the XHR2 package (usage: global.XMLHttpRequest = require('xhr2')";
+            throw new Error(nodeError); 
+        }
+    }
 }
 
 String_ctr[$default_locale] = String_ctr[$default_locale] || "";
 String_ctr[$locale] = nav && (nav.language || nav.userLanguage) || "";
 
-if (typeof document !== undef_type) {
+if (!browserless || typeof document !== undef_type) {
 	var
 	  elts = document.getElementsByTagName("link")
 	, i = elts.length
@@ -225,6 +268,17 @@ if (typeof document !== undef_type) {
 			}
 		}
 	}
+}
+else
+{
+    if(global.l10NLocalFilePath) {
+        load(global.l10NLocalFilePath);
+    }
+    else {
+        var nodeError = "Problem loading localization file. You are most likely running in a non-browser environment like Node." + 
+            "If this is the case, you can resolve this error by setting global.l10NLocalFilePath to the path of your localization file. ";
+        throw new Error(nodeError); 
+    }
 }
 
 }());
